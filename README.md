@@ -12,10 +12,17 @@ court and rules. It adds the pose-based stroke analysis popularised by
 [IsoCourt](https://www.isocourt.fit/). It also adds a **POV mode** for footage from a
 chest/head-mounted action camera, which most recreational players actually have.
 
+### 🌐 Try it in your browser: **https://arvanj.github.io/Pickleball-Vision/**
+
+No install. **Live** uses your phone or laptop camera; **Analyze a clip** takes a recorded video. Detection
+runs on your device with a small YOLO model, and the video is never uploaded.
+[More below](#website-live-and-clip-analysis).
+
 ---
 
 ## Contents
 
+- [Website: live and clip analysis](#website-live-and-clip-analysis)
 - [Features](#features)
 - [Two modes: fixed vs POV](#two-modes-fixed-vs-pov)
 - [How it works](#how-it-works)
@@ -33,6 +40,35 @@ chest/head-mounted action camera, which most recreational players actually have.
 - [Credits and licences](#credits-and-licences)
 
 ---
+
+## Website: live and clip analysis
+
+**https://arvanj.github.io/Pickleball-Vision/** is a static site (in [`docs/`](docs)) that runs fixed-camera
+analysis entirely in the browser:
+
+- **Live:** start the camera, tap 4+ court landmarks on the video, and play. Players, the ball trail,
+  projected court lines, the latest shot, rallies, faults, a top-down court and coach notes update every second.
+  The screen stays awake during a session.
+- **Analyze a clip:** choose or drop a video, pick a start and end time, tap the court landmarks, then press
+  Analyze. Progress goes through reading frames, detecting players and ball, finding hits and bounces, and writing
+  coach notes. Afterwards the video replays with the overlay, and clicking a shot jumps to it.
+- **Ball detail:** *Standard* (640 px model, fast, the default for live) or *High* (1280 px, about 4× slower,
+  the default for clips). High is what finds a small or distant ball.
+- **Download results** as JSON (same fields as the Python `stats.json`). The calibration is remembered per
+  camera resolution.
+
+How it works:
+- [`docs/engine.js`](docs/engine.js) is a line-for-line port of the Python court, event, shot and stats logic.
+  [`tests/engine_parity.mjs`](tests/engine_parity.mjs) checks that it gives exactly the same events, shots and
+  player stats as Python on a real output folder.
+- [`docs/detector.js`](docs/detector.js) runs YOLOv8n (exported to ONNX) with onnxruntime-web: WebGPU when
+  available, otherwise WebAssembly.
+- Clips are sampled by playing the video slowly and catching frames as they're decoded, which is about 8× faster
+  than seeking frame by frame.
+
+Compared with the Python pipeline, the website uses the small YOLOv8n model and a simple IoU tracker, and has no
+pose (stroke form, serve-height fault) or POV mode. On a Mac's GPU, Standard runs at about 6–8 frames per second
+live, and High analyzes about 2 frames per second of clip.
 
 ## Features
 
@@ -316,6 +352,7 @@ Pickleball-Vision/
 │   │                   #   POV camera compensation, swing detection
 │   ├── analytics.py    # Player movement stats, shot summaries, stroke form from keypoints
 │   └── draw.py         # Frame annotation, mini-court, heatmaps
+├── docs/               # The website (GitHub Pages): index.html, app.js, engine.js, detector.js, models/
 ├── demo/
 │   ├── build.py        # Builds the shareable HTML replay from output folders
 │   ├── template.html   # Replay page (camera view, court view, timeline, tables)
@@ -406,6 +443,7 @@ Because tracking is cached, changing any of these and re-running `app.py` only r
 
 ```bash
 python tests/test_core.py        # or: python -m pytest tests
+node tests/engine_parity.mjs outputs/<run>   # web engine vs Python on a real run
 ```
 
 Covers:

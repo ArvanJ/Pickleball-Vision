@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pickleball-Vision</title>
+<meta name="description" content="Live and recorded pickleball video analysis in your browser: player and ball tracking, hits, bounces, shot types, rallies and kitchen faults.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working column. Source (camera or clip) with overlay on top, results below; reads well on a phone on a tripod. */
+:root {
+  --bg: #eef2f5; --panel: #ffffff; --ink: #12263a; --muted: #5b6b7b; --line: #d3dce4;
+  --court: #2a5c8a; --kitchen: #3f7a5a; --court-line: #ffffff; --ball: #c9e22b; --ball-ink: #6d7d00;
+  --accent: #e0623a; --ok: #2f8a57; --stage: #1b2a38;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1820; --panel: #16222d; --ink: #e3ebf2; --muted: #8fa1b2; --line: #263645;
+    --court: #23507a; --kitchen: #2f6a4b; --court-line: #e8eef3; --ball: #d4ec3a; --ball-ink: #d4ec3a;
+    --accent: #f07a52; --ok: #4cbf80; --stage: #0b131a; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) 48px; }
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 18px; }
+header.top { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.brand { font: 700 1.9rem/1 var(--f-display); letter-spacing: .01em; margin: 0; }
+.brand span { color: var(--ball-ink); }
+nav { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
+nav button { font: 600 .9rem var(--f-body); background: none; border: 0; color: var(--muted); padding: 7px 14px; border-radius: 7px; cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
+.status { font: 500 .8rem var(--f-mono); color: var(--muted); }
+h1 { font: 700 2rem/1.05 var(--f-display); margin: 0; text-wrap: balance; }
+h2 { font: 700 1.25rem var(--f-display); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+.lede { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { font: 600 .95rem var(--f-body); border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; background: var(--ink); color: var(--panel); }
+.btn.go { background: var(--ok); color: #fff; }
+.btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn:focus-visible, nav button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.field { display: grid; gap: 4px; font-size: .78rem; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+input[type=number], select { font: 500 .95rem var(--f-mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); width: 8.5em; }
+.drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 6px; justify-items: start; }
+.drop.over { border-color: var(--accent); }
+.stage { position: relative; background: var(--stage); border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+.stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage canvas { touch-action: none; }
+.stage .placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #9fb3c6; text-align: center; padding: 20px; font-size: .95rem; }
+.calbar { display: grid; gap: 10px; background: var(--bg); border-radius: 10px; padding: 12px; }
+.calbar b { font-family: var(--f-mono); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.steps li { display: flex; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 8px; color: var(--muted); }
+.steps li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); flex: none; }
+.steps li.active { background: var(--bg); color: var(--ink); font-weight: 600; }
+.steps li.active::before { border-color: var(--ok); background: var(--ok); }
+.steps li.done { color: var(--ink); }
+.steps li.done::before { border-color: var(--ok); background: var(--ok); }
+progress { width: 100%; height: 8px; accent-color: var(--ok); }
+.eta { font: 500 .85rem var(--f-mono); color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.fact { display: grid; gap: 2px; }
+.fact span { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.fact b { font: 700 1.9rem/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.now { font: 700 1.3rem var(--f-display); letter-spacing: .02em; min-height: 1.6em; }
+.now .fault { color: var(--accent); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; align-items: start; }
+#court { width: 100%; max-width: 300px; aspect-ratio: 20 / 50; margin: 0 auto; display: block; }
+.notes { margin: 0; padding-left: 1.1em; display: grid; gap: 8px; max-width: 65ch; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); }
+tr.jump { cursor: pointer; }
+tr.jump:hover td { background: var(--bg); }
+.tag { font: 600 .74rem var(--f-body); padding: 1px 7px; border-radius: 4px; color: #fff; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.err { color: var(--accent); font-weight: 600; }
+.tips { margin: 0; padding-left: 1.1em; color: var(--muted); font-size: .9rem; display: grid; gap: 4px; }
+footer { color: var(--muted); font-size: .82rem; }
+footer a { color: inherit; }
+@media (max-width: 760px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <p class="brand">Pickleball<span>·</span>Vision</p>
+    <nav role="tablist" aria-label="Mode">
+      <button role="tab" id="tab-live" aria-selected="true" type="button">Live</button>
+      <button role="tab" id="tab-clip" aria-selected="false" type="button">Analyze a clip</button>
+    </nav>
+    <span class="status" id="status">Model not loaded</span>
+  </header>
+
+  <section class="card" id="source">
+    <div id="live-intro">
+      <h1>Live session</h1>
+      <p class="lede">Put your phone on a tripod behind a baseline, as high as it goes, with the court in view. Tap the court lines once, then play. Everything runs on this device.</p>
+    </div>
+    <div id="clip-intro" hidden>
+      <h1>Analyze a clip</h1>
+      <p class="lede">Pick a recorded match from a fixed camera. Choose the part to analyze, tap the court lines once, and get rallies, shots, faults and coach notes. The video stays on this device.</p>
+    </div>
+
+    <div class="row" id="live-controls">
+      <button class="btn go" id="cam-start" type="button">Start camera</button>
+      <button class="btn ghost" id="cam-stop" type="button" hidden>Stop</button>
+    </div>
+
+    <div id="clip-controls" hidden>
+      <div class="drop" id="drop">
+        <label class="btn" for="file">Choose video</label>
+        <input type="file" id="file" accept="video/*" hidden>
+        <span class="status" id="file-name">or drop a file here (MP4 or MOV)</span>
+      </div>
+      <div class="row" id="clip-options" hidden>
+        <label class="field" for="t-start">Start (s)<input type="number" id="t-start" min="0" step="1" value="0"></label>
+        <label class="field" for="t-end">End (s)<input type="number" id="t-end" min="1" step="1" value="60"></label>
+        <label class="field" for="rate">Frames analyzed<select id="rate"><option value="30">30 per second (best)</option><option value="15">15 per second (faster)</option></select></label>
+        <span class="eta" id="clip-eta"></span>
+      </div>
+    </div>
+
+    <div class="row">
+      <label class="field" for="detail">Ball detail<select id="detail" style="width: auto">
+        <option value="640">Standard: fast, for a raised camera</option>
+        <option value="1280">High: finds small balls, about 4× slower</option>
+      </select></label>
+    </div>
+
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+      <div class="placeholder" id="placeholder">Start the camera or choose a video.</div>
+    </div>
+
+    <div class="calbar" id="calbar" hidden>
+      <div id="cal-ask">Tap the <b id="cal-name">far-left</b> point on the video. Skip any you can't see; you need at least 4, not all on one line.</div>
+      <div class="row" id="cal-tools">
+        <button class="btn ghost" id="cal-skip" type="button">Skip</button>
+        <button class="btn ghost" id="cal-undo" type="button">Undo</button>
+        <button class="btn ghost" id="cal-saved" type="button" hidden>Use last calibration</button>
+        <button class="btn go" id="cal-done" type="button" disabled>Done</button>
+        <span class="status" id="cal-count">0 points</span>
+      </div>
+      <div class="row" id="cal-confirm" hidden>
+        <span>Do the white lines sit on the court lines?</span>
+        <button class="btn go" id="cal-ok" type="button">Yes, start</button>
+        <button class="btn ghost" id="cal-redo" type="button">Redo</button>
+      </div>
+      <p class="err" id="cal-err" hidden></p>
+    </div>
+
+    <div id="progress" hidden>
+      <ol class="steps" id="steps">
+        <li data-step="frames">Reading frames</li>
+        <li data-step="detect">Detecting players and ball</li>
+        <li data-step="events">Finding hits and bounces</li>
+        <li data-step="notes">Writing coach notes</li>
+      </ol>
+      <progress id="bar" max="1" value="0"></progress>
+      <div class="row"><span class="eta" id="eta"></span><button class="btn ghost" id="clip-cancel" type="button">Cancel</button></div>
+    </div>
+    <div class="row"><button class="btn go" id="clip-run" type="button" hidden disabled>Analyze</button></div>
+    <p class="err" id="error" hidden></p>
+  </section>
+
+  <section class="card" id="results" hidden>
+    <div class="row" style="justify-content: space-between">
+      <h2>Results</h2>
+      <button class="btn ghost" id="download" type="button">Download results (JSON)</button>
+    </div>
+    <div class="now" id="now" aria-live="polite"></div>
+    <div class="facts" id="facts"></div>
+    <div class="split">
+      <div><canvas id="court" width="300" height="750" aria-label="Top-down court with players and recent bounces"></canvas></div>
+      <div class="card" style="padding: 0; border: 0">
+        <h2>Coach notes</h2>
+        <ul class="notes" id="notes"></ul>
+      </div>
+    </div>
+    <h2>Shots</h2>
+    <div class="tbl"><table id="shots"></table></div>
+    <h2>Players</h2>
+    <div class="tbl"><table id="players"></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Getting good results</h2>
+    <ul class="tips">
+      <li>Fixed camera only: a tripod or fence mount that doesn't move during play. For chest or head cameras, use POV mode in the Python version.</li>
+      <li>Height matters most. 2–3 m up behind a baseline lets the ball and far players be seen.</li>
+      <li>Use the 1× lens at 60 fps if you can, and lock focus and exposure.</li>
+      <li>Live analysis runs a small model on the device, so it's less accurate than the Python pipeline on recorded video.</li>
+    </ul>
+  </section>
+
+  <footer>Pickleball-Vision · <a href="https://github.com/ArvanJ/Pickleball-Vision" target="_blank" rel="noopener">source on GitHub</a> · Video is processed in your browser and never uploaded.</footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
