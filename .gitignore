@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.DS_Store
+outputs/
+PICKLEBALLPOV/
+data/
+*.pt
+*.mp4
+*.MP4
+*.mov
+*.MOV
