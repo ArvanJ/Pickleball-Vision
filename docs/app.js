@@ -1,5 +1,5 @@
-import { Court, LANDMARKS, COURT_LINES, COURT_W, COURT_L, NET_Y, KITCHEN, Tracker, onCourt, analyse } from "./engine.js";
-import { loadDetector, detect, detectorBackend } from "./detector.js";
+import { Court, LANDMARKS, COURT_LINES, COURT_W, COURT_L, NET_Y, KITCHEN, Tracker, onCourt, analyse } from "./engine.js?v=4";
+import { loadDetector, detect, detectorBackend } from "./detector.js?v=4";
 
 const $ = id => document.getElementById(id);
 const video = $("video"), overlay = $("overlay");
@@ -103,15 +103,39 @@ function finishCalibration(court) {
   $("cal-ask").hidden = true; $("cal-tools").hidden = true; $("cal-confirm").hidden = false;
   drawOverlay(0);
 }
-overlay.addEventListener("pointerdown", e => {
-  if (!S.calibrating || S.calIdx >= NAMES.length || !vw()) return;
+// Press, drag to line up the crosshair in the magnifier, release to place the point.
+let aim = null;  // [x, y] in video pixels while a finger or mouse is down
+function toVideo(e) {
   fitCanvas();
   const r = overlay.getBoundingClientRect(), d = window.devicePixelRatio || 1, { s, ox, oy } = mapping();
-  const x = ((e.clientX - r.left) * d - ox) / s, y = ((e.clientY - r.top) * d - oy) / s;
-  if (x < 0 || y < 0 || x > vw() || y > vh()) return;
-  S.cal[NAMES[S.calIdx]] = [Math.round(x), Math.round(y)];
-  S.calIdx++; updateCal();
+  return [((e.clientX - r.left) * d - ox) / s, ((e.clientY - r.top) * d - oy) / s];
+}
+function drawLoupe() {
+  if (!aim) return;
+  const g = overlay.getContext("2d"), d = window.devicePixelRatio || 1, { s, ox, oy } = mapping();
+  const R = 60 * d, zoom = 3, cx = ox + aim[0] * s, cy = Math.max(R + 4 * d, oy + aim[1] * s - R - 40 * d);
+  const src = R / (s * zoom);  // half-size of the magnified area, in video pixels
+  g.save(); g.beginPath(); g.arc(cx, cy, R, 0, 7); g.clip();
+  g.drawImage(video, aim[0] - src, aim[1] - src, 2 * src, 2 * src, cx - R, cy - R, 2 * R, 2 * R);
+  g.restore();
+  g.strokeStyle = "#fff"; g.lineWidth = 2 * d; g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+  g.strokeStyle = "#e0623a"; g.lineWidth = 1.5 * d; g.beginPath();
+  g.moveTo(cx - 12 * d, cy); g.lineTo(cx + 12 * d, cy); g.moveTo(cx, cy - 12 * d); g.lineTo(cx, cy + 12 * d); g.stroke();
+}
+const inFrame = ([x, y]) => x >= 0 && y >= 0 && x <= vw() && y <= vh();
+overlay.addEventListener("pointerdown", e => {
+  if (!S.calibrating || S.calIdx >= NAMES.length || !vw()) return;
+  try { overlay.setPointerCapture(e.pointerId); } catch { /* keep going without capture */ }
+  aim = toVideo(e); drawOverlay(0); drawLoupe();
 });
+overlay.addEventListener("pointermove", e => { if (aim) { aim = toVideo(e); drawOverlay(0); drawLoupe(); } });
+overlay.addEventListener("pointerup", () => {
+  if (!aim) return;
+  const p = aim; aim = null;
+  if (inFrame(p) && S.calIdx < NAMES.length) { S.cal[NAMES[S.calIdx]] = p.map(Math.round); S.calIdx++; }
+  updateCal();
+});
+overlay.addEventListener("pointercancel", () => { aim = null; drawOverlay(0); });
 $("cal-skip").onclick = () => { if (S.calIdx < NAMES.length) S.calIdx++; updateCal(); };
 $("cal-undo").onclick = () => {
   const keys = Object.keys(S.cal);
@@ -408,5 +432,6 @@ function setMode(mode) {
 $("tab-live").onclick = () => setMode("live");
 $("tab-clip").onclick = () => setMode("clip");
 window.addEventListener("resize", () => { drawOverlay(S.replay ? replayIdx() : S.players.length - 1); if (S.result) drawCourt(S.replay ? replayIdx() : S.players.length - 1); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", () => { if (S.result) drawCourt(S.replay ? replayIdx() : S.players.length - 1); });
 if (location.hash === "#clip") setMode("clip");
 if (!navigator.mediaDevices?.getUserMedia) $("cam-start").disabled = true;

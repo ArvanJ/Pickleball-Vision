@@ -27,29 +27,38 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body);
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); -webkit-text-size-adjust: 100%;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: max(16px, env(safe-area-inset-top, 0px)) 48px; }
-.wrap { max-width: 1100px; margin: 0 auto; display: grid; gap: 18px; }
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) calc(72px + env(safe-area-inset-bottom, 0px)); }
+.wrap { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 header.top { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; }
+.brand-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
 .brand { font: 700 1.9rem/1 var(--f-display); letter-spacing: .01em; margin: 0; }
 .brand span { color: var(--ball-ink); }
 nav { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 3px; }
-nav button { font: 600 .9rem var(--f-body); background: none; border: 0; color: var(--muted); padding: 7px 14px; border-radius: 7px; cursor: pointer; }
+nav button { font: 600 .95rem var(--f-body); background: none; border: 0; color: var(--muted); padding: 8px 16px; min-height: 40px; border-radius: 7px; cursor: pointer; }
 nav button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .status { font: 500 .8rem var(--f-mono); color: var(--muted); }
 h1 { font: 700 2rem/1.05 var(--f-display); margin: 0; text-wrap: balance; }
 h2 { font: 700 1.25rem var(--f-display); text-transform: uppercase; letter-spacing: .03em; margin: 0; }
 .lede { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.card > * { min-width: 0; }
 .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.btn { font: 600 .95rem var(--f-body); border: 0; border-radius: 8px; padding: 10px 18px; cursor: pointer; background: var(--ink); color: var(--panel); }
+.btn { font: 600 1rem var(--f-body); border: 0; border-radius: 9px; padding: 10px 18px; min-height: 44px; cursor: pointer; background: var(--ink); color: var(--panel);
+  display: inline-flex; align-items: center; justify-content: center; text-align: center; -webkit-tap-highlight-color: transparent; }
+.btn.main { justify-self: start; min-width: 12em; }
+.between { justify-content: space-between; }
 .btn.go { background: var(--ok); color: #fff; }
 .btn.ghost { background: none; color: var(--ink); border: 1px solid var(--line); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn:focus-visible, nav button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 label.field { display: grid; gap: 4px; font-size: .78rem; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-input[type=number], select { font: 500 .95rem var(--f-mono); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); width: 8.5em; }
+input[type=number], select { font: 500 16px var(--f-mono); padding: 8px 10px; min-height: 44px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--panel); color: var(--ink); width: 100%; max-width: 100%; }  /* 16px stops iOS zooming on focus */
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 10px 12px; align-items: end; max-width: 560px; }
+.opts .wide { grid-column: 1 / -1; }
+.hint { margin: 0; color: var(--muted); font-size: .85rem; }
 .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 6px; justify-items: start; }
 .drop.over { border-color: var(--accent); }
 .stage { position: relative; background: var(--stage); border-radius: 10px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
@@ -90,6 +99,25 @@ tr.jump:hover td { background: var(--bg); }
 footer { color: var(--muted); font-size: .82rem; }
 footer a { color: inherit; }
 @media (max-width: 760px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+  body { font-size: 16px; }
+  header.top { display: grid; gap: 12px; }
+  .brand-row { justify-content: space-between; }
+  .brand { font-size: 1.7rem; }
+  nav { width: 100%; }
+  nav button { flex: 1; }
+  h1 { font-size: 1.75rem; }
+  .card { padding: 14px; border-radius: 10px; }
+  .btn.main, .drop .btn { width: 100%; justify-self: stretch; min-height: 50px; font-size: 1.05rem; }
+  .drop { justify-items: stretch; text-align: center; padding: 14px; }
+  .tools { display: grid; grid-template-columns: 1fr 1fr; }
+  .tools .wide, .tools .status { grid-column: 1 / -1; }
+  .tools #cal-done, .tools #cal-ok { grid-column: 1 / -1; min-height: 50px; }
+  .stage { border-radius: 8px; }
+  .facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fact b { font-size: 1.6rem; }
+  #court { max-width: 170px; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.webgpu.min.js"></script>
@@ -97,12 +125,14 @@ footer a { color: inherit; }
 <body>
 <div class="wrap">
   <header class="top">
-    <p class="brand">Pickleball<span>·</span>Vision</p>
+    <div class="brand-row">
+      <p class="brand">Pickleball<span>·</span>Vision</p>
+      <span class="status" id="status">Model not loaded</span>
+    </div>
     <nav role="tablist" aria-label="Mode">
       <button role="tab" id="tab-live" aria-selected="true" type="button">Live</button>
       <button role="tab" id="tab-clip" aria-selected="false" type="button">Analyze a clip</button>
     </nav>
-    <span class="status" id="status">Model not loaded</span>
   </header>
 
   <section class="card" id="source">
@@ -116,8 +146,8 @@ footer a { color: inherit; }
     </div>
 
     <div class="row" id="live-controls">
-      <button class="btn go" id="cam-start" type="button">Start camera</button>
-      <button class="btn ghost" id="cam-stop" type="button" hidden>Stop</button>
+      <button class="btn go main" id="cam-start" type="button">Start camera</button>
+      <button class="btn ghost main" id="cam-stop" type="button" hidden>Stop session</button>
     </div>
 
     <div id="clip-controls" hidden>
@@ -126,19 +156,20 @@ footer a { color: inherit; }
         <input type="file" id="file" accept="video/*" hidden>
         <span class="status" id="file-name">or drop a file here (MP4 or MOV)</span>
       </div>
-      <div class="row" id="clip-options" hidden>
-        <label class="field" for="t-start">Start (s)<input type="number" id="t-start" min="0" step="1" value="0"></label>
-        <label class="field" for="t-end">End (s)<input type="number" id="t-end" min="1" step="1" value="60"></label>
-        <label class="field" for="rate">Frames analyzed<select id="rate"><option value="30">30 per second (best)</option><option value="15">15 per second (faster)</option></select></label>
-        <span class="eta" id="clip-eta"></span>
+      <div class="opts" id="clip-options" hidden>
+        <label class="field" for="t-start">Start (s)<input type="number" id="t-start" min="0" step="1" value="0" inputmode="numeric"></label>
+        <label class="field" for="t-end">End (s)<input type="number" id="t-end" min="1" step="1" value="60" inputmode="numeric"></label>
+        <label class="field wide" for="rate">Frames per second<select id="rate"><option value="30">30 (best)</option><option value="15">15 (faster)</option></select></label>
+        <span class="eta wide" id="clip-eta"></span>
       </div>
     </div>
 
-    <div class="row">
-      <label class="field" for="detail">Ball detail<select id="detail" style="width: auto">
-        <option value="640">Standard: fast, for a raised camera</option>
-        <option value="1280">High: finds small balls, about 4× slower</option>
+    <div class="opts">
+      <label class="field wide" for="detail">Ball detail<select id="detail">
+        <option value="640">Standard (fast)</option>
+        <option value="1280">High (small balls, slower)</option>
       </select></label>
+      <p class="hint wide">High finds a distant or small ball but takes about 4× longer. Use Standard for live play from a raised camera.</p>
     </div>
 
     <div class="stage" id="stage">
@@ -148,16 +179,16 @@ footer a { color: inherit; }
     </div>
 
     <div class="calbar" id="calbar" hidden>
-      <div id="cal-ask">Tap the <b id="cal-name">far-left</b> point on the video. Skip any you can't see; you need at least 4, not all on one line.</div>
-      <div class="row" id="cal-tools">
+      <div id="cal-ask">Place the <b id="cal-name">far-left</b> point: press on the video, drag until the crosshair sits on the line corner, then let go. Skip any you can't see; you need at least 4, not all on one line.</div>
+      <div class="row tools" id="cal-tools">
         <button class="btn ghost" id="cal-skip" type="button">Skip</button>
         <button class="btn ghost" id="cal-undo" type="button">Undo</button>
         <button class="btn ghost" id="cal-saved" type="button" hidden>Use last calibration</button>
         <button class="btn go" id="cal-done" type="button" disabled>Done</button>
         <span class="status" id="cal-count">0 points</span>
       </div>
-      <div class="row" id="cal-confirm" hidden>
-        <span>Do the white lines sit on the court lines?</span>
+      <div class="row tools" id="cal-confirm" hidden>
+        <span class="wide">Do the white lines sit on the court lines?</span>
         <button class="btn go" id="cal-ok" type="button">Yes, start</button>
         <button class="btn ghost" id="cal-redo" type="button">Redo</button>
       </div>
@@ -172,14 +203,14 @@ footer a { color: inherit; }
         <li data-step="notes">Writing coach notes</li>
       </ol>
       <progress id="bar" max="1" value="0"></progress>
-      <div class="row"><span class="eta" id="eta"></span><button class="btn ghost" id="clip-cancel" type="button">Cancel</button></div>
+      <div class="row between"><span class="eta" id="eta"></span><button class="btn ghost" id="clip-cancel" type="button">Cancel</button></div>
     </div>
-    <div class="row"><button class="btn go" id="clip-run" type="button" hidden disabled>Analyze</button></div>
+    <button class="btn go main" id="clip-run" type="button" hidden disabled>Analyze</button>
     <p class="err" id="error" hidden></p>
   </section>
 
   <section class="card" id="results" hidden>
-    <div class="row" style="justify-content: space-between">
+    <div class="row between">
       <h2>Results</h2>
       <button class="btn ghost" id="download" type="button">Download results (JSON)</button>
     </div>
@@ -210,6 +241,6 @@ footer a { color: inherit; }
 
   <footer>Pickleball-Vision · <a href="https://github.com/ArvanJ/Pickleball-Vision" target="_blank" rel="noopener">source on GitHub</a> · Video is processed in your browser and never uploaded.</footer>
 </div>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=4"></script>
 </body>
 </html>
