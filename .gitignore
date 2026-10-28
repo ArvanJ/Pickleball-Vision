@@ -9,3 +9,5 @@ data/
 *.MP4
 *.mov
 *.MOV
+demo/replay.html
+.claude/

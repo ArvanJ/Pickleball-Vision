@@ -44,8 +44,9 @@ chest/head-mounted action camera, which most recreational players actually have.
   removed, and short gaps are filled by interpolation. Long gaps are left empty: the ball is out of play.
 - **Paddle detection.** In POV mode, paddles (COCO "tennis racket") are detected in the same pass as the ball,
   to recognise your own paddle in frame.
-- **Court mapping (fixed mode).** You click the 4 court corners once. A homography then maps every pixel on the
-  ground to real court metres (20 × 44 ft court, 7 ft non-volley zone).
+- **Court mapping (fixed mode).** You click 4 or more court landmarks once: corners, kitchen-line ends and centres,
+  or baseline centres. Corners that are off-screen or hidden behind the net can be skipped. A homography then maps every
+  pixel on the ground to real court metres (20 × 44 ft court, 7 ft non-volley zone).
 - **Camera-motion compensation (POV mode).** Frame-to-frame camera pan is measured with phase correlation and
   removed from the ball track, so hits and bounces are found relative to the world, not to your moving head.
 - **Pose estimation.** YOLOv8-pose keypoints at each contact frame give stroke form.
@@ -68,13 +69,13 @@ chest/head-mounted action camera, which most recreational players actually have.
 | Kitchen volley | Volley hit while the hitter's feet are in the non-volley zone | fixed |
 | Out | Bounce lands outside the court lines | fixed |
 | Net | Ball bounces on the hitter's own side | fixed |
-| Serve above waist | At serve contact the paddle wrist is above the hip line (pose) | fixed |
+| Serve above waist | At serve contact the paddle wrist is clearly above the waist (pose) | fixed |
 
 ### 🧍 Stroke form (pose)
 At every shot by a tracked player:
 - **Paddle arm** (left or right)
 - **Elbow angle** at contact
-- **Contact below waist** and **overhead** flags
+- **Contact height** (0 = waist, 1 = shoulders), plus **below waist** and **overhead** flags
 
 ### 📊 Player metrics (fixed)
 - Distance covered (m)
@@ -96,7 +97,7 @@ At every shot by a tracked player:
 | | `--mode fixed` (default) | `--mode pov` |
 |---|---|---|
 | Camera | Tripod or fence mount, whole court in view | Worn by a player (chest, head, paddle) |
-| Setup | Click 4 court corners once | None |
+| Setup | Click 4+ court landmarks once | None |
 | Player tracking, ball trail, rallies | ✅ | ✅ (camera pan removed) |
 | Other players' hits + stroke form | ✅ | ✅ |
 | Your own swings | as a tracked player | ✅ camera jolt + your paddle in view |
@@ -114,7 +115,7 @@ court through a fisheye lens. So any court-plane number would be wrong.
 
 ```
                          ┌────────────────────────── fixed mode ──────────────────────────┐
-video ─► frames ─┬─► court homography (4 clicked corners) ─► feet → court metres
+video ─► frames ─┬─► court homography (4+ clicked landmarks) ─► feet → court metres
                  │
                  ├─► YOLOv8 + ByteTrack ─► players {id: bbox, court xy}
                  ├─► YOLOv8 ─► ball xy (+ paddles in POV)
@@ -126,7 +127,7 @@ video ─► frames ─┬─► court homography (4 clicked corners) ─► fee
                                  ▼
        events: turning points in ball y ─► hit (near a player) / bounce
                + your swings: camera jolt + own paddle + opponent hit just before   (POV)
-               + de-duplication: one contact per 0.35 s, one hit per side per 0.5 s
+               + de-duplication: one contact per 0.35 s, one hit per side per 1 s (fixed) / 0.5 s (POV)
                                  │
                                  ▼
        shots: type, volley, speed + landing (fixed), rally grouping, rule faults
@@ -175,8 +176,13 @@ YOLO weights (`yolov8m.pt`, `yolov8n-pose.pt`) download automatically on first r
 ```bash
 python app.py data/match.mp4
 ```
-A window opens. Click the court corners in order (**far-left, far-right, near-right, near-left**),
-then press **Enter** (**r** resets, **Esc** aborts). The calibration is saved and reused.
+A window opens and asks for court landmarks one at a time, starting with the four corners. Click each
+one, or press **s** to skip a landmark you can't see (for example a corner off the edge of the frame or
+behind the net). Once at least 4 are placed (not all on one line), press **Enter**. **u** undoes,
+**r** resets and **Esc** aborts. The calibration is saved and reused.
+
+Landmarks: `far-left`, `far-right`, `near-right`, `near-left`, `near-baseline-center`,
+`far-baseline-center`, `near-kitchen-left|center|right`, `far-kitchen-left|center|right`.
 
 **POV camera:**
 ```bash
@@ -193,9 +199,13 @@ python app.py data/my_gopro.mp4 --mode pov --start 120 --max-frames 1800
 streamlit run dashboard.py
 ```
 
-**Headless / scripted calibration:**
+**Headless / scripted calibration** (all 4 corners visible):
 ```bash
 python app.py data/match.mp4 --corners 412,318,1508,318,1840,1012,80,1012
+```
+Or with any 4+ named landmarks, e.g. a floor-level phone that sees only the near half:
+```bash
+python app.py IMG_1577.MOV --court-points "near-left=1537,1613;near-baseline-center=3330,1613;near-kitchen-left=1642,1398;near-kitchen-center=2354,1404"
 ```
 
 ---
@@ -209,6 +219,7 @@ python app.py data/match.mp4 --corners 412,318,1508,318,1840,1012,80,1012
 | `--mode {fixed,pov}` | `fixed` | Camera type |
 | `--out DIR` | `outputs/<name>` or `outputs/<name>-pov` | Output folder |
 | `--corners x1,y1,…,x4,y4` | — | Fixed mode: court corners in pixels (far-left, far-right, near-right, near-left); skips the click window |
+| `--court-points "name=x,y;…"` | — | Fixed mode: 4+ named landmarks (see Quick start) when some corners aren't visible |
 | `--start SECONDS` | `0` | Where to start in the video |
 | `--max-frames N` | all | How many frames to analyse |
 | `--player-model` | `yolov8m.pt` | YOLO model for people |
@@ -225,6 +236,14 @@ python calibrate.py match.mp4 outputs/match/court.json --frame 300
 ```
 Re-do the court calibration on any frame.
 
+### `demo/build.py`
+```bash
+python demo/build.py demo/replay.html "outputs/IMG_1577:Fixed · floor phone" "outputs/clip-pov:POV · chest cam"
+```
+Builds a single self-contained HTML replay from one or more output folders. It shows synced camera and
+court views, a shot timeline, a player table and a shot log. Only detections are embedded, never video
+pixels, so the file is safe to share. Per-run captions come from `demo/meta.json`.
+
 ---
 
 ## Outputs
@@ -236,7 +255,7 @@ Each run writes to `outputs/<video name>[-pov]/`:
 | `annotated.mp4` | Replay with boxes, IDs, ball trail, mini-court (fixed), shot + fault labels. H.264 so it plays in browsers |
 | `stats.json` | Everything below |
 | `tracking.json` | Raw per-frame detections (cache) plus the settings that produced them |
-| `court.json` | Court corner calibration (fixed) |
+| `court.json` | Court calibration: clicked image points and their court coordinates (fixed) |
 | `heatmap_P<id>.png` | Court-coverage heatmap per player (fixed) |
 
 ### `stats.json` structure
@@ -297,6 +316,10 @@ Pickleball-Vision/
 │   │                   #   POV camera compensation, swing detection
 │   ├── analytics.py    # Player movement stats, shot summaries, stroke form from keypoints
 │   └── draw.py         # Frame annotation, mini-court, heatmaps
+├── demo/
+│   ├── build.py        # Builds the shareable HTML replay from output folders
+│   ├── template.html   # Replay page (camera view, court view, timeline, tables)
+│   └── meta.json       # Per-run captions for the replay
 ├── tests/
 │   └── test_core.py    # Self-checks for all non-ML logic
 └── requirements.txt
@@ -323,8 +346,16 @@ Pickleball-Vision/
   - your swings when your paddle is out of view are missed
   - players on neighbouring courts are occasionally picked up
 
-**Fixed mode** has been checked end to end and its logic is unit-tested. Its shot-type thresholds
-have not yet been tuned on labelled fixed-camera footage.
+**Fixed mode** was run on one minute of indoor doubles filmed by an iPhone lying on the floor
+behind the near baseline (4K/60 fps). What it showed:
+- Calibration works from 4 non-corner landmarks. The projected kitchen line, centre line and far
+  sideline land on the painted lines.
+- The ball was detected in only **23%** of frames. From floor level the far half of the court is about
+  70 pixels tall, so the pickleball is a few pixels and far-side hits are missed.
+- Near-side strokes by the player closest to the camera are found. False hits come from bouncing the
+  ball before a serve and from carrying it between points. The net-crossing rule (one hit per side
+  per second) and only computing speed toward a bounce or a different player came from this check.
+- **A raised camera matters more than any setting.** See [Recording tips](#recording-tips).
 
 **Speed:** about 3–6 frames per second on an Apple M-series GPU at 4K (two YOLO models per frame),
 so a 10-minute POV clip takes roughly an hour. Use `--start` / `--max-frames`.
@@ -339,7 +370,8 @@ All thresholds are plain function arguments with docstrings:
 |---|---|---|
 | Rally gap | `classify_shots` / `pov_shots` `rally_gap_s` | 2.5 s |
 | Duplicate-contact window | `filter_hits` `min_gap_s` | 0.35 s |
-| One hit per side window (POV) | `pov_shots` `same_side_s` | 0.5 s |
+| One hit per side window | `filter_hits` `same_side_s` (fixed) / `pov_shots` `same_side_s` (POV) | 1.0 s / 0.5 s |
+| Serve-above-waist fault | `add_stroke_form` in `app.py` | wrist > half-way from waist to shoulders |
 | Drive speed | `--drive-speed` | 10 m/s |
 | Dink / drop / lob zones | `shot_type` | kitchen ± 1 m, last 2 m before the baseline |
 | Hit reach around a player | `find_events` `reach` | 0.6 × player height |
@@ -356,7 +388,10 @@ Because tracking is cached, changing any of these and re-running `app.py` only r
 ## Recording tips
 
 **Fixed mode (best results):**
-- Tripod or fence mount behind a baseline, as high as possible (2–3 m+), with **all four corners in frame**
+- Tripod or fence mount behind a baseline, as high as possible (2–3 m+). A phone on the floor
+  squeezes the far half of the court into a sliver, and the ball becomes nearly invisible
+- Ideally all four corners are in frame. If not, make sure at least 4 landmarks are visible (e.g. both
+  near corners plus the two ends of the near kitchen line)
 - 60 fps if your camera supports it. The ball moves fast and blurs at 30 fps
 - Keep the camera still for the whole recording. If it moves, re-run `calibrate.py`
 
@@ -374,7 +409,7 @@ python tests/test_core.py        # or: python -m pytest tests
 ```
 
 Covers:
-- homography round-trips and kitchen checks
+- homography round-trips, kitchen checks, and calibration from non-corner landmarks
 - ball outlier removal and gap filling
 - hit/bounce detection on a synthetic trajectory
 - shot classification and faults (serve, return, drop, kitchen volley)
@@ -382,7 +417,7 @@ Covers:
 - heatmap rendering
 - camera-shift sign and compensation
 - own-body filtering, swing detection with and without paddle data
-- duplicate-hit removal and POV rally/volley logic
+- duplicate-hit removal (time and same-side) and POV rally/volley logic
 
 ---
 

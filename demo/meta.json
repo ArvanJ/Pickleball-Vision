@@ -1,0 +1,10 @@
+{
+  "IMG_1577": {
+    "subtitle": "Indoor doubles filmed on an iPhone resting on the floor behind the near baseline. One minute of play (6:23–7:23), analysed in fixed mode.",
+    "method": "Fixed mode, 4K at 60 fps (replayed at 30 fps). The near-right corner was off-screen and the far baseline hidden behind the net, so the court was calibrated from 4 other landmarks: the near-left corner, the centre of the near baseline, and the left end and centre of the near kitchen line. YOLOv8m with ByteTrack tracks players, YOLOv8m finds the ball (COCO <code>sports ball</code>), and YOLOv8n-pose gives stroke form at each contact. The camera sits at floor level, so the far half of the court is squeezed into about 70 pixels behind the net. Far-side positions are coarse, and far-side bounces are rarely seen."
+  },
+  "20250519_201002-pov": {
+    "subtitle": "Outdoor doubles from a chest-mounted action camera. 30 seconds (2:57–3:27), analysed in POV mode.",
+    "method": "POV mode, 4K at 30 fps. Camera pan is measured each frame with phase correlation and removed from the ball track before hits and bounces are detected. Your own swings come from camera jolts, counted only when your own paddle is in view and an opponent hit the ball to you just before. There is no court view, because a worn camera can't be mapped to the court. Hand-checked against the video, this clip scores 56% precision and 75% recall on hits. Player IDs change when people leave and re-enter the frame."
+  }
+}

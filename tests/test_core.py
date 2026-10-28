@@ -7,7 +7,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pbv import analytics, draw, events  # noqa: E402
 from pbv.constants import COURT_L, COURT_W, KITCHEN, NET_Y  # noqa: E402
-from pbv.court import Court  # noqa: E402
+from pbv.court import LANDMARKS, Court  # noqa: E402
 
 COURT = Court([(300, 100), (700, 100), (900, 600), (100, 600)])
 
@@ -17,6 +17,21 @@ def test_homography_roundtrip():
     p = np.array([[2.0, 5.0], [4.0, 11.0]])
     assert np.allclose(COURT.to_court(COURT.to_image(p)), p, atol=1e-3)
     assert Court.in_kitchen((3, NET_Y + 1)) and not Court.in_kitchen((3, NET_Y + KITCHEN + 0.5))
+
+
+def test_court_from_landmarks_when_corners_hidden():
+    # Only the near half is visible: rebuild the same homography from 4 non-corner landmarks.
+    named = {n: COURT.to_image([LANDMARKS[n]])[0].tolist()
+             for n in ("near-left", "near-baseline-center", "near-kitchen-left", "near-kitchen-center")}
+    c = Court.from_landmarks(named)
+    assert np.allclose(c.corners_px, COURT.corners_px, atol=0.5)
+    assert np.allclose(c.to_court([(500, 300)]), COURT.to_court([(500, 300)]), atol=1e-3)
+    for bad in ({"near-left": (0, 0)}, {"middle": (1, 1), **named}):
+        try:
+            Court.from_landmarks(bad)
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass
 
 
 def test_clean_ball_fills_short_gaps_only():
@@ -94,6 +109,7 @@ def test_stroke_form():
     kp[8], kp[10] = (140, 150), (180, 230)     # right arm swinging low
     form = analytics.stroke_form(kp)
     assert form["arm"] == "right" and form["contact_below_waist"] and not form["overhead"]
+    assert form["contact_height"] < 0                          # wrist 30 px below the hips
     kp[12] = (0, 0)
     assert analytics.stroke_form(kp) is None
 
@@ -146,8 +162,11 @@ def test_find_swings_needs_ball_and_own_paddle():
 
 def test_filter_hits_drops_double_detections():
     evs = [{"frame": 0, "type": "hit", "player": "1"}, {"frame": 5, "type": "hit", "player": "7"},
-           {"frame": 8, "type": "bounce", "player": None}, {"frame": 30, "type": "hit", "player": "2"}]
-    assert [e["frame"] for e in events.filter_hits(evs, fps=30)] == [0, 8, 30]
+           {"frame": 8, "type": "bounce", "player": None}, {"frame": 20, "type": "hit", "player": "1"},
+           {"frame": 35, "type": "hit", "player": "2"}]
+    assert [e["frame"] for e in events.filter_hits(evs, fps=30)] == [0, 8, 20, 35]
+    side = {"1": "near", "7": "near", "2": "far"}       # frame 20: near side again 0.67 s later
+    assert [e["frame"] for e in events.filter_hits(evs, 30, side=lambda e: side[e["player"]])] == [0, 8, 35]
 
 
 def test_pov_shots_rallies_and_net_crossing():

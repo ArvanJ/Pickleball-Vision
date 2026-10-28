@@ -72,9 +72,11 @@ def stroke_form(kp):
     if not kp[[shoulder, elbow, wrist, L_HIP, R_HIP]].all(axis=1).all():  # (0,0) = keypoint missing
         return None
     shoulder_y = kp[[L_SHOULDER, R_SHOULDER]][:, 1].min()
+    torso = max(hip[1] - kp[[L_SHOULDER, R_SHOULDER]][:, 1].mean(), 1e-6)
     return {
         "arm": "left" if wrist == L_WRIST else "right",
         "elbow_angle": round(_angle(kp[shoulder], kp[elbow], kp[wrist]), 1),
         "contact_below_waist": bool(kp[wrist, 1] > hip[1]),  # image y grows downward
         "overhead": bool(kp[wrist, 1] < shoulder_y),
+        "contact_height": round(float((hip[1] - kp[wrist, 1]) / torso), 2),  # 0 = waist, 1 = shoulders
     }

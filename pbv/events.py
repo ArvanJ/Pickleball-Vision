@@ -66,17 +66,21 @@ def find_events(ball, players, window=5, min_prominence=8, min_gap=6, reach=0.6,
     return events
 
 
-def filter_hits(events, fps, min_gap_s=0.35):
-    """Drop re-detections of one contact: a hit < min_gap_s after the previous kept hit.
+def filter_hits(events, fps, min_gap_s=0.35, side=None, same_side_s=1.0):
+    """Drop hits that can't be separate shots.
 
-    Time only, because player IDs churn (the same person can show up under two IDs).
+    - re-detections of one contact: a hit < min_gap_s after the previous kept hit (time only,
+      because player IDs churn and one person can show up under two IDs)
+    - with side(event) -> "near"/"far": a hit by the same side < same_side_s after the previous
+      kept hit, since the ball has to cross the net and come back first
     """
-    out, last = [], -np.inf
+    out, last = [], None
     for e in events:
         if e["type"] == "hit":
-            if e["frame"] - last < min_gap_s * fps:
+            gap = e["frame"] - last["frame"] if last else np.inf
+            if gap < min_gap_s * fps or (side and gap < same_side_s * fps and side(e) == side(last)):
                 continue
-            last = e["frame"]
+            last = e
         out.append(e)
     return out
 
@@ -111,7 +115,11 @@ def classify_shots(events, players, court, fps, rally_gap_s=2.5, drive_speed=10.
 
         nxt = hits[k + 1] if k + 1 < len(hits) else len(events)
         landing_ev = next((b for b in events[i + 1:nxt] if b["type"] == "bounce"), None)
-        target_ev = landing_ev or (events[nxt] if nxt < len(events) else None)
+        # destination: the bounce, else the next hitter in the same rally (a re-hit by the same
+        # player, or a hit in the next point, says nothing about this shot's speed)
+        nxt_ev = events[nxt] if nxt < len(events) else None
+        same_rally = nxt_ev and nxt_ev["player"] != e["player"] and (nxt_ev["frame"] - f) / fps <= rally_gap_s
+        target_ev = landing_ev or (nxt_ev if same_rally else None)
         hitter = np.array(players[f][e["player"]]["court"])
         landing = speed = None
         airtime = 0.0

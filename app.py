@@ -70,8 +70,9 @@ def add_stroke_form(video, shots, players, start, model, serve_fault=True):
         ok, frame = cap.read()
         kp = pose.keypoints_for(frame, players[s["frame"]][s["player"]]["bbox"]) if ok else None
         s["form"] = analytics.stroke_form(kp) if kp is not None else None
-        # Rule 4.A: serve contact must be below the waist.
-        if serve_fault and s["type"] == "serve" and s["form"] and not s["form"]["contact_below_waist"]:
+        # Rule 4.A: serve contact must be below the waist. The hit frame can land a few frames into
+        # the follow-through, so only flag a wrist clearly above the waist (half-way to the shoulders).
+        if serve_fault and s["type"] == "serve" and s["form"] and s["form"]["contact_height"] > 0.5:
             s["faults"].append("serve_above_waist")
 
 
@@ -111,7 +112,8 @@ def render(video, dst, start, players, ball, evs, shots, court, fps):
 def analyse_fixed(data, court, args):
     fps, players = data["fps"], data["players"]
     ball = events.clean_ball(data["ball"], max_jump=0.08 * data["width"])
-    evs = events.filter_hits(events.find_events(ball, players), fps)
+    evs = events.filter_hits(events.find_events(ball, players), fps,
+                             side=lambda e: court.side(players[e["frame"]][e["player"]]["court"]))
     shots, rallies = events.classify_shots(evs, players, court, fps, drive_speed=args.drive_speed)
     return ball, evs, shots, rallies, analytics.player_stats(players, fps)
 
@@ -143,6 +145,9 @@ def main():
     ap.add_argument("--mode", choices=["fixed", "pov"], default="fixed", help="fixed camera or body-worn POV camera")
     ap.add_argument("--out", type=Path, help="output dir (default outputs/<video name>[-pov])")
     ap.add_argument("--corners", help="fixed mode: 8 comma-separated pixel coords: far-left, far-right, near-right, near-left")
+    ap.add_argument("--court-points", help='fixed mode: 4+ named landmarks when corners are hidden, e.g. '
+                    '"near-left=1537,1613;near-baseline-center=3330,1613;near-kitchen-left=1642,1398;..." '
+                    "(names: see LANDMARKS in pbv/court.py)")
     ap.add_argument("--player-model", default="yolov8m.pt")
     ap.add_argument("--ball-model", default="yolov8m.pt")
     ap.add_argument("--ball-class", type=int, default=32, help="class id of the ball (-1 = any class)")
@@ -169,6 +174,13 @@ def main():
             if len(c) != 8:
                 ap.error("--corners needs exactly 8 numbers")
             Court(list(zip(c[::2], c[1::2]))).save(court_path)
+        elif args.court_points:
+            try:
+                named = {n.strip(): tuple(float(v) for v in xy.split(","))
+                         for n, xy in (part.split("=") for part in args.court_points.split(";") if part.strip())}
+                Court.from_landmarks(named).save(court_path)
+            except ValueError as e:
+                ap.error(f"--court-points: {e}")
         elif not court_path.exists():
             from calibrate import calibrate
             calibrate(args.video, court_path, start)

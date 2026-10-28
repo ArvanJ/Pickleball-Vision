@@ -1,0 +1,375 @@
+<meta charset="utf-8">
+<title>Pickleball-Vision Replay</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: broadcast-style replay desk. Two synced views (camera detections, top-down court) over a shot timeline; stats below. */
+:root {
+  --bg: #eef2f5;          /* cool gym-floor grey */
+  --panel: #ffffff;
+  --ink: #12263a;         /* court-blue ink */
+  --muted: #5b6b7b;
+  --line: #d3dce4;
+  --court: #2a5c8a;       /* hard-court blue */
+  --kitchen: #3f7a5a;     /* kitchen green */
+  --court-line: #ffffff;
+  --ball: #c9e22b;        /* optic yellow */
+  --ball-ink: #6d7d00;
+  --accent: #e0623a;      /* paddle orange: playhead + faults */
+  --cam-bg: #1b2a38;
+  --cam-ink: #9fb3c6;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1820; --panel: #16222d; --ink: #e3ebf2; --muted: #8fa1b2; --line: #263645;
+    --court: #23507a; --kitchen: #2f6a4b; --court-line: #e8eef3; --ball: #d4ec3a; --ball-ink: #d4ec3a;
+    --accent: #f07a52; --cam-bg: #0b131a; --cam-ink: #7f95a8; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1820; --panel: #16222d; --ink: #e3ebf2; --muted: #8fa1b2; --line: #263645;
+  --court: #23507a; --kitchen: #2f6a4b; --court-line: #e8eef3; --ball: #d4ec3a; --ball-ink: #d4ec3a;
+  --accent: #f07a52; --cam-bg: #0b131a; --cam-ink: #7f95a8; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px 24px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 2.4rem; line-height: 1; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+h1 span { color: var(--muted); font-weight: 600; }
+.sub { color: var(--muted); margin: 6px 0 0; max-width: 62ch; }
+h2 { font-family: var(--f-display); font-size: 1.35rem; font-weight: 700; margin: 0; letter-spacing: .02em; text-transform: uppercase; }
+.label { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.tabs button { font: 500 .9rem var(--f-body); color: var(--muted); background: none; border: 0; padding: 8px 14px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
+.tabs button:focus-visible, .ctrl:focus-visible, .shotrow:focus-visible, #timeline:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.view { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+.view header { align-items: baseline; }
+canvas { display: block; width: 100%; height: auto; border-radius: 6px; }
+#cam { background: var(--cam-bg); aspect-ratio: 16 / 9; }
+#court { aspect-ratio: 20 / 50; max-height: 560px; width: auto; margin: 0 auto; }
+.courtnote { color: var(--muted); font-size: .85rem; padding: 24px 8px; text-align: center; }
+
+.deck { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: grid; gap: 10px; }
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.ctrl { font: 600 .9rem var(--f-body); background: var(--ink); color: var(--panel); border: 0; border-radius: 6px; padding: 7px 14px; cursor: pointer; min-width: 84px; }
+.ctrl.ghost { background: none; color: var(--ink); border: 1px solid var(--line); min-width: 0; }
+.clock { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: .95rem; }
+.speed { display: inline-flex; gap: 4px; align-items: center; }
+.now { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.pill { font: 600 .8rem var(--f-body); padding: 3px 9px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); white-space: nowrap; }
+.pill.fault { background: var(--accent); border-color: var(--accent); color: #fff; }
+#timeline { width: 100%; height: 64px; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 600; color: var(--muted); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td.num, th.num { text-align: right; font-family: var(--f-mono); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.shotlog { max-height: 340px; overflow: auto; }
+.shotrow { cursor: pointer; }
+.shotrow:hover td, .shotrow.cur td { background: var(--bg); }
+.tag { font: 600 .74rem var(--f-body); padding: 1px 7px; border-radius: 4px; color: #fff; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.fact { display: grid; gap: 2px; }
+.fact b { font-family: var(--f-display); font-size: 1.9rem; line-height: 1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.method { color: var(--muted); font-size: .88rem; max-width: 75ch; margin: 0; }
+.method code { font-family: var(--f-mono); font-size: .85em; }
+footer { color: var(--muted); font-size: .82rem; }
+footer a { color: inherit; }
+@media (max-width: 860px) {
+  .stage, .grid2 { grid-template-columns: minmax(0, 1fr); }
+  #court { max-height: 420px; }
+  .now { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Pickleball-Vision <span>Replay</span></h1>
+      <p class="sub" id="sub"></p>
+    </div>
+    <div class="tabs" role="tablist" id="tabs"></div>
+  </header>
+
+  <section class="facts card" id="facts" aria-label="Summary"></section>
+
+  <section class="stage">
+    <div class="view">
+      <header><h2>Camera view</h2><span class="label" id="camlabel">Detections in image space</span></header>
+      <canvas id="cam" width="1280" height="720" aria-label="Detected players, ball and court lines in the camera image"></canvas>
+    </div>
+    <div class="view">
+      <header><h2>Court view</h2><span class="label">Top-down, metres</span></header>
+      <canvas id="court" width="400" height="1000" aria-label="Players and bounces mapped onto the court"></canvas>
+      <p class="courtnote" id="courtnote" hidden>POV mode has no court mapping: a worn camera moves every frame, so pixels can't be turned into court positions.</p>
+    </div>
+  </section>
+
+  <section class="deck" aria-label="Playback">
+    <div class="controls">
+      <button class="ctrl" id="play" type="button">Play</button>
+      <span class="clock" id="clock">0:00.0 / 0:00.0</span>
+      <span class="speed" role="group" aria-label="Playback speed">
+        <button class="ctrl ghost" type="button" data-speed="0.25">¼×</button>
+        <button class="ctrl ghost" type="button" data-speed="0.5">½×</button>
+        <button class="ctrl ghost" type="button" data-speed="1">1×</button>
+      </span>
+      <span class="now" id="now"></span>
+    </div>
+    <canvas id="timeline" width="1200" height="64" tabindex="0" aria-label="Timeline of rallies and shots; click to jump"></canvas>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>Players</h2>
+      <div class="tbl"><table id="players"></table></div>
+    </div>
+    <div class="card">
+      <h2>Shot log</h2>
+      <div class="tbl shotlog"><table id="shots"></table></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>How this run was made</h2>
+    <p class="method" id="method"></p>
+  </section>
+
+  <footer>Generated by <a href="https://github.com/ArvanJ/Pickleball-Vision" target="_blank" rel="noopener">Pickleball-Vision</a> from real footage. Only detections are shown here, no video frames.</footer>
+</div>
+
+<script>
+const DATASETS = __DATA__;
+
+const COURT_W = 6.096, COURT_L = 13.411, NET_Y = COURT_L / 2, KITCHEN = 2.1336;
+const TYPE_COLORS = { serve: "#7b5cd6", return: "#3a8fd6", drive: "#e0623a", dink: "#3f9a6a", drop: "#2fa8a0",
+  lob: "#c58a1c", volley: "#d64f8a", groundstroke: "#6f7f8f" };
+const PLAYER_COLORS = ["#e0623a", "#3a8fd6", "#3f9a6a", "#c58a1c", "#7b5cd6", "#d64f8a"];
+
+let ds = DATASETS[0], frame = 0, playing = false, speed = 1, last = null;
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pname = p => p === "me" ? "You" : "P" + p;
+const pcolor = p => {
+  const ids = Object.keys(ds.players).concat(Object.keys(ds.shot_summary));
+  const i = p === "me" ? 0 : ids.indexOf(p);
+  return PLAYER_COLORS[(i < 0 ? 0 : i) % PLAYER_COLORS.length];
+};
+const fmt = s => { const m = Math.floor(s / 60); return m + ":" + (s - m * 60).toFixed(1).padStart(4, "0"); };
+
+function sizeCanvas(c) {  // crisp on hi-dpi; keeps CSS-driven layout
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (!r.width) return;
+  const w = Math.round(r.width * d), h = Math.round(r.height * d);
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+}
+
+function drawCam() {
+  const c = $("cam"), g = c.getContext("2d"); sizeCanvas(c);
+  const s = Math.min(c.width / ds.W, c.height / ds.H), ox = (c.width - ds.W * s) / 2, oy = (c.height - ds.H * s) / 2;
+  const X = x => ox + x * s, Y = y => oy + y * s, d = window.devicePixelRatio || 1;
+  g.fillStyle = css("--cam-bg"); g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = css("--cam-ink"); g.globalAlpha = .5; g.lineWidth = 1.5 * d;
+  g.strokeRect(X(0), Y(0), ds.W * s, ds.H * s);
+  for (const [x1, y1, x2, y2] of ds.lines || []) { g.beginPath(); g.moveTo(X(x1), Y(y1)); g.lineTo(X(x2), Y(y2)); g.stroke(); }
+  g.globalAlpha = 1;
+  const f = ds.frames[frame];
+  g.font = `600 ${12 * d}px IBM Plex Sans, sans-serif`;
+  for (const [id, x1, y1, x2, y2] of f.p) {
+    g.strokeStyle = pcolor(id); g.lineWidth = 2 * d; g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s);
+    g.fillStyle = pcolor(id); g.fillText(pname(id), X(x1), Y(y1) - 5 * d);
+  }
+  const trail = [];
+  for (let k = Math.max(0, frame - 12); k <= frame; k++) if (ds.frames[k].b) trail.push(ds.frames[k].b);
+  g.strokeStyle = css("--ball"); g.lineWidth = 2.5 * d; g.beginPath();
+  trail.forEach(([x, y], i) => i ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y))); g.stroke();
+  if (f.b) { g.fillStyle = css("--ball"); g.beginPath(); g.arc(X(f.b[0]), Y(f.b[1]), 6 * d, 0, 7); g.fill(); }
+  const shot = currentShot();
+  if (shot && frame - shot.f < ds.fps * 1.2) {
+    g.font = `700 ${22 * d}px Barlow Condensed, sans-serif`;
+    const txt = `${pname(shot.player)} · ${shot.type.toUpperCase()}${shot.kmh ? ` · ${Math.round(shot.kmh)} km/h` : ""}`;
+    g.fillStyle = "rgba(0,0,0,.55)"; const w = g.measureText(txt).width;
+    g.fillRect(12 * d, 12 * d, w + 20 * d, 32 * d); g.fillStyle = "#fff"; g.fillText(txt, 22 * d, 35 * d);
+  }
+}
+
+function drawCourt() {
+  const c = $("court");
+  if (!ds.court) return;
+  sizeCanvas(c);
+  const g = c.getContext("2d"), d = window.devicePixelRatio || 1, pad = 14 * d;
+  const s = Math.min((c.width - 2 * pad) / COURT_W, (c.height - 2 * pad) / (COURT_L + 2));
+  const ox = (c.width - COURT_W * s) / 2, oy = (c.height - COURT_L * s) / 2;
+  const X = x => ox + x * s, Y = y => oy + y * s;
+  g.fillStyle = css("--panel"); g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = css("--court"); g.fillRect(X(0), Y(0), COURT_W * s, COURT_L * s);
+  g.fillStyle = css("--kitchen"); g.fillRect(X(0), Y(NET_Y - KITCHEN), COURT_W * s, 2 * KITCHEN * s);
+  g.strokeStyle = css("--court-line"); g.lineWidth = 2 * d; g.strokeRect(X(0), Y(0), COURT_W * s, COURT_L * s);
+  g.beginPath();
+  for (const y of [NET_Y - KITCHEN, NET_Y + KITCHEN]) { g.moveTo(X(0), Y(y)); g.lineTo(X(COURT_W), Y(y)); }
+  g.moveTo(X(COURT_W / 2), Y(0)); g.lineTo(X(COURT_W / 2), Y(NET_Y - KITCHEN));
+  g.moveTo(X(COURT_W / 2), Y(NET_Y + KITCHEN)); g.lineTo(X(COURT_W / 2), Y(COURT_L)); g.stroke();
+  g.lineWidth = 4 * d; g.beginPath(); g.moveTo(X(-.3), Y(NET_Y)); g.lineTo(X(COURT_W + .3), Y(NET_Y)); g.stroke();
+  g.fillStyle = css("--muted"); g.font = `500 ${11 * d}px IBM Plex Mono, monospace`;
+  g.fillText("far baseline", X(0), Y(0) - 5 * d); g.fillText("near baseline · camera", X(0), Y(COURT_L) + 15 * d);
+  // bounces in the last 3 s
+  for (const b of ds.bounces) {
+    const age = (frame - b.f) / ds.fps;
+    if (age < 0 || age > 3) continue;
+    g.globalAlpha = 1 - age / 3; g.fillStyle = css("--ball"); g.strokeStyle = "#000";
+    g.beginPath(); g.arc(X(b.x), Y(b.y), 5 * d, 0, 7); g.fill(); g.lineWidth = 1 * d; g.stroke();
+  }
+  g.globalAlpha = 1;
+  // player trails + dots
+  const f0 = Math.max(0, frame - Math.round(ds.fps * 1.5));
+  for (const [id] of ds.frames[frame].p) {
+    g.strokeStyle = pcolor(id); g.globalAlpha = .45; g.lineWidth = 2 * d; g.beginPath(); let started = false;
+    for (let k = f0; k <= frame; k++) {
+      const q = ds.frames[k].p.find(p => p[0] === id);
+      if (!q) continue;
+      started ? g.lineTo(X(q[5]), Y(q[6])) : g.moveTo(X(q[5]), Y(q[6])); started = true;
+    }
+    g.stroke(); g.globalAlpha = 1;
+  }
+  for (const [id, , , , , cx, cy] of ds.frames[frame].p) {
+    g.fillStyle = pcolor(id); g.beginPath(); g.arc(X(cx), Y(cy), 7 * d, 0, 7); g.fill();
+    g.strokeStyle = css("--panel"); g.lineWidth = 2 * d; g.stroke();
+    g.fillStyle = css("--ink"); g.font = `600 ${11 * d}px IBM Plex Sans, sans-serif`; g.fillText(pname(id), X(cx) + 9 * d, Y(cy) + 4 * d);
+  }
+}
+
+function drawTimeline() {
+  const c = $("timeline"); sizeCanvas(c);
+  const g = c.getContext("2d"), d = window.devicePixelRatio || 1, n = ds.frames.length;
+  const X = f => f / (n - 1) * c.width;
+  g.fillStyle = css("--bg"); g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = css("--line");
+  for (const r of ds.rallies) g.fillRect(X(r.start) - 2 * d, 8 * d, Math.max(4 * d, X(r.end) - X(r.start) + 4 * d), c.height - 16 * d);
+  for (const sh of ds.shots) {
+    g.fillStyle = TYPE_COLORS[sh.type] || "#888";
+    g.fillRect(X(sh.f) - 1.5 * d, 14 * d, 3 * d, c.height - 28 * d);
+    if (sh.faults.length) { g.fillStyle = css("--accent"); g.beginPath(); g.arc(X(sh.f), 9 * d, 3.5 * d, 0, 7); g.fill(); }
+  }
+  for (const b of ds.bounces) { g.fillStyle = css("--ball-ink"); g.fillRect(X(b.f) - d, c.height - 10 * d, 2 * d, 6 * d); }
+  g.fillStyle = css("--accent"); g.fillRect(X(frame) - d, 0, 2 * d, c.height);
+}
+
+function currentShot() {
+  let s = null;
+  for (const sh of ds.shots) { if (sh.f <= frame) s = sh; else break; }
+  return s;
+}
+
+function renderNow() {
+  $("clock").textContent = `${fmt(frame / ds.fps + ds.start_s)} / ${fmt((ds.frames.length - 1) / ds.fps + ds.start_s)}`;
+  const sh = currentShot(), rally = ds.rallies.find(r => frame >= r.start - ds.fps * .2 && frame <= r.end + ds.fps * 1.5);
+  const bits = [];
+  bits.push(`<span class="pill">${rally ? "Rally " + (ds.rallies.indexOf(rally) + 1) : "Between points"}</span>`);
+  if (sh && frame - sh.f < ds.fps * 2) {
+    bits.push(`<span class="pill">${pname(sh.player)} ${sh.type}${sh.volley ? " (volley)" : ""}</span>`);
+    for (const ft of sh.faults) bits.push(`<span class="pill fault">${ft.replaceAll("_", " ")}</span>`);
+  }
+  $("now").innerHTML = bits.join("");
+  document.querySelectorAll(".shotrow").forEach(r => r.classList.toggle("cur", sh && +r.dataset.f === sh.f));
+}
+
+function draw() { drawCam(); drawCourt(); drawTimeline(); renderNow(); }
+
+function tick(t) {
+  if (playing) {
+    if (last !== null) frame += (t - last) / 1000 * ds.fps * speed;
+    last = t;
+    if (frame >= ds.frames.length - 1) { frame = ds.frames.length - 1; setPlaying(false); }
+  }
+  const f = frame; frame = Math.floor(frame); draw(); frame = playing ? f : frame;
+  requestAnimationFrame(tick);
+}
+
+function setPlaying(p) { playing = p; last = null; $("play").textContent = p ? "Pause" : "Play"; if (!p) frame = Math.floor(frame); }
+function seek(f) { frame = Math.max(0, Math.min(ds.frames.length - 1, Math.round(f))); last = null; draw(); }
+
+function loadDataset(i) {
+  ds = DATASETS[i]; setPlaying(false); frame = 0;
+  document.querySelectorAll("#tabs button").forEach((b, k) => b.setAttribute("aria-selected", k === i));
+  $("sub").textContent = ds.subtitle;
+  $("camlabel").textContent = ds.mode === "pov" ? "Detections, body-worn camera" : "Detections + projected court lines";
+  $("court").hidden = !ds.court; $("courtnote").hidden = !!ds.court;
+  const faults = ds.shots.reduce((a, s) => a + s.faults.length, 0);
+  const facts = [["Analysed", fmt(ds.frames.length / ds.fps).replace(/\.\d$/, "") + " min"], ["Rallies", ds.rallies.length],
+    ["Shots", ds.shots.length], ["Bounces", ds.bounces.length], ["Faults", faults], ["Ball seen", ds.ball_pct + "%"]];
+  $("facts").innerHTML = facts.map(([k, v]) => `<div class="fact"><span class="label">${k}</span><b>${v}</b></div>`).join("");
+  // players table
+  const pids = Object.keys(ds.players).concat(Object.keys(ds.shot_summary).filter(p => !(p in ds.players)));
+  const court = !!ds.court;
+  const head = `<tr><th>Player</th>${court ? '<th>Side</th><th class="num">Distance m</th><th class="num">Avg m/s</th><th class="num">Kitchen %</th>' : '<th class="num">Seen s</th>'}<th class="num">Shots</th><th class="num">Volleys</th>${court ? '<th class="num">Avg km/h</th>' : ""}</tr>`;
+  const rows = pids.map(p => {
+    const a = ds.players[p] || {}, b = ds.shot_summary[p] || {};
+    return `<tr><td><span class="swatch" style="background:${pcolor(p)}"></span>${pname(p)}</td>` +
+      (court ? `<td>${a.side ?? "–"}</td><td class="num">${a.distance_m ?? "–"}</td><td class="num">${a.avg_speed_ms ?? "–"}</td><td class="num">${a.kitchen_pct ?? "–"}</td>`
+             : `<td class="num">${a.seconds ?? "–"}</td>`) +
+      `<td class="num">${b.shots ?? 0}</td><td class="num">${b.volleys ?? 0}</td>${court ? `<td class="num">${b.avg_shot_kmh ?? "–"}</td>` : ""}</tr>`;
+  });
+  $("players").innerHTML = head + rows.join("");
+  // shot log
+  $("shots").innerHTML = `<tr><th class="num">Time</th><th>Player</th><th>Shot</th><th class="num">km/h</th><th>Form</th><th>Faults</th></tr>` +
+    ds.shots.map(s => `<tr class="shotrow" tabindex="0" data-f="${s.f}"><td class="num">${fmt(s.f / ds.fps + ds.start_s)}</td>` +
+      `<td><span class="swatch" style="background:${pcolor(s.player)}"></span>${pname(s.player)}</td>` +
+      `<td><span class="tag" style="background:${TYPE_COLORS[s.type] || "#888"}">${s.type}</span>${s.volley ? " volley" : ""}</td>` +
+      `<td class="num">${s.kmh ?? "–"}</td><td>${s.form ? `${s.form.arm} arm, elbow ${Math.round(s.form.elbow_angle)}°` : "–"}</td>` +
+      `<td>${s.faults.map(f => f.replaceAll("_", " ")).join(", ") || "–"}</td></tr>`).join("");
+  document.querySelectorAll(".shotrow").forEach(r => {
+    const go = () => seek(+r.dataset.f - ds.fps * .6);
+    r.addEventListener("click", go);
+    r.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+  const used = [...new Set(ds.shots.map(s => s.type))];
+  $("legend").innerHTML = used.map(t => `<span><i style="background:${TYPE_COLORS[t]}"></i>${t}</span>`).join("") +
+    `<span><i style="background:var(--line)"></i>rally</span><span><i style="background:var(--ball-ink)"></i>bounce</span><span><i style="background:var(--accent);border-radius:50%"></i>fault</span>`;
+  $("method").innerHTML = ds.method;
+  seek(ds.shots.length ? ds.shots[0].f - ds.fps : 0);
+}
+
+$("tabs").innerHTML = DATASETS.map((d, i) => `<button type="button" role="tab" id="tab-${d.id}">${d.label}</button>`).join("");
+document.querySelectorAll("#tabs button").forEach((b, i) => b.addEventListener("click", () => { loadDataset(i); try { location.hash = DATASETS[i].id; } catch (e) {} }));
+$("play").addEventListener("click", () => { if (frame >= ds.frames.length - 1) frame = 0; setPlaying(!playing); });
+document.querySelectorAll("[data-speed]").forEach(b => b.addEventListener("click", () => {
+  speed = +b.dataset.speed; document.querySelectorAll("[data-speed]").forEach(x => x.setAttribute("aria-pressed", x === b));
+}));
+document.querySelector('[data-speed="1"]').setAttribute("aria-pressed", "true");
+const tl = $("timeline");
+const seekFromEvent = e => { const r = tl.getBoundingClientRect(); seek((e.clientX - r.left) / r.width * (ds.frames.length - 1)); };
+let dragging = false;
+tl.addEventListener("pointerdown", e => { dragging = true; tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+tl.addEventListener("pointermove", e => { if (dragging) seekFromEvent(e); });
+tl.addEventListener("pointerup", () => { dragging = false; });
+tl.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight") seek(frame + ds.fps); else if (e.key === "ArrowLeft") seek(frame - ds.fps);
+  else if (e.key === " ") { e.preventDefault(); setPlaying(!playing); }
+});
+window.addEventListener("resize", draw);
+const start = Math.max(0, DATASETS.findIndex(d => d.id === location.hash.slice(1)));
+loadDataset(start);
+requestAnimationFrame(tick);
+</script>
