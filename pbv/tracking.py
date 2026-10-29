@@ -18,6 +18,7 @@ def is_own_body(box, w, h, margin=4):
 class PlayerTracker:
     def __init__(self, model="yolov8m.pt", conf=0.3):
         self.model, self.conf = YOLO(model), conf
+        self.person = class_id(self.model, "person")
 
     def track(self, frame, court=None, max_players=4):
         """-> {player_id: {"bbox": [x1,y1,x2,y2], "court": [x_m, y_m]}} for people on the court.
@@ -25,7 +26,7 @@ class PlayerTracker:
         court=None is POV mode: no court position, the wearer's own body is dropped, and
         the 3 biggest remaining people (partner + opponents) are kept.
         """
-        r = self.model.track(frame, persist=True, classes=[PERSON], conf=self.conf,
+        r = self.model.track(frame, persist=True, classes=[self.person], conf=self.conf,
                              tracker="bytetrack.yaml", device=DEVICE, verbose=False)[0]
         if r.boxes.id is None:
             return {}
@@ -47,13 +48,22 @@ class PlayerTracker:
         return out
 
 
+def class_id(model, *names):
+    """Index of the first of names in the model's classes (COCO and trained models name them differently)."""
+    ids = {v: k for k, v in model.names.items()}
+    return next((ids[n] for n in names if n in ids), None)
+
+
 class BallDetector:
-    # shortcut: COCO "sports ball" misses many small/blurred pickleballs; pass a ball model
-    # trained on pickleball frames (or swap in TrackNet) via --ball-model/--ball-class for real matches.
-    def __init__(self, model="yolov8m.pt", cls=SPORTS_BALL, conf=0.15, imgsz=1280):
+    # shortcut: COCO "sports ball" misses many small/blurred pickleballs; a model trained with
+    # training/ (classes person, pickleball, paddle) is picked up automatically via --ball-model.
+    def __init__(self, model="yolov8m.pt", cls=None, conf=0.15, imgsz=1280):
         self.model = YOLO(model)
-        self.paddles = cls == SPORTS_BALL  # the COCO model also finds paddles in the same pass
-        self.classes = None if cls < 0 else [cls] + ([RACKET] if self.paddles else [])
+        if cls is None:
+            cls = class_id(self.model, "pickleball", "sports ball")
+        self.paddle_cls = None if cls is not None and cls < 0 else class_id(self.model, "paddle", "tennis racket")
+        self.paddles = self.paddle_cls is not None  # paddles come from the same pass
+        self.classes = None if cls < 0 else [cls] + ([self.paddle_cls] if self.paddles else [])
         self.conf, self.imgsz = conf, imgsz
 
     def detect(self, frame):
@@ -61,8 +71,8 @@ class BallDetector:
         r = self.model.predict(frame, classes=self.classes, conf=self.conf, imgsz=self.imgsz,
                                device=DEVICE, verbose=False)[0]
         boxes, cls, conf = r.boxes.xyxy.tolist(), r.boxes.cls.int().tolist(), r.boxes.conf.tolist()
-        paddle = [b for b, k in zip(boxes, cls) if self.paddles and k == RACKET]
-        balls = [(c, b) for b, k, c in zip(boxes, cls, conf) if not (self.paddles and k == RACKET)]
+        paddle = [b for b, k in zip(boxes, cls) if self.paddles and k == self.paddle_cls]
+        balls = [(c, b) for b, k, c in zip(boxes, cls, conf) if not (self.paddles and k == self.paddle_cls)]
         ball = None
         if balls:
             x1, y1, x2, y2 = max(balls)[1]

@@ -150,7 +150,7 @@ def main():
                     "(names: see LANDMARKS in pbv/court.py)")
     ap.add_argument("--player-model", default="yolov8m.pt")
     ap.add_argument("--ball-model", default="yolov8m.pt")
-    ap.add_argument("--ball-class", type=int, default=32, help="class id of the ball (-1 = any class)")
+    ap.add_argument("--ball-class", type=int, help="class id of the ball (default: from the model's class names; -1 = any)")
     ap.add_argument("--pose-model", default="yolov8n-pose.pt")
     ap.add_argument("--no-pose", action="store_true")
     ap.add_argument("--drive-speed", type=float, default=10.0, help="fixed mode: m/s above which a shot is a drive")

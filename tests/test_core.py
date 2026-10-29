@@ -182,6 +182,23 @@ def test_pov_shots_rallies_and_net_crossing():
     assert [(s["player"], s["type"]) for s in shots] == [("4", "serve"), ("me", "return"), ("4", "volley"), ("5", "serve")]
     assert [r["shots"] for r in rallies] == [3, 1]
 
+def test_training_labels_keep_moving_ball_and_fill_gaps():
+    from training.labels import ball_tracks, labels_from_tracks, link_tracks
+    frames = []
+    for i in range(20):
+        c = [[300.0, 50.0, 6, 6, 0.4]]                    # static logo, never moves
+        if i not in (8, 9):                               # ball moving 10 px/frame, missed twice
+            c.append([100.0 + 10 * i, 200.0, 6, 6, 0.3])
+        frames.append({"main": True, "c": c})
+    frames.append({"main": False, "c": []})               # camera cut ends every track
+    kept = ball_tracks(link_tracks(frames))
+    assert len(kept) == 1 and kept[0][0][1] == 100.0
+    labels = labels_from_tracks(kept)
+    assert sorted(labels) == list(range(20))
+    x, y, size, conf, filled = labels[8]
+    assert abs(x - 180) < 1e-6 and filled and not labels[7][4]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

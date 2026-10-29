@@ -12,3 +12,7 @@ data/
 demo/replay.html
 .claude/
 docs/test-clip.mp4
+brag-output*/
+training/data/
+training/runs/
+training/*.log
